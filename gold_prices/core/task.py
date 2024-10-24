@@ -6,29 +6,42 @@ from .models import (
     TalaseModel,
     TlynModel
 )
+from datetime import datetime
 
+import requests
+from celery import shared_task
+from bs4 import BeautifulSoup
+from django.shortcuts import get_object_or_404
 
 def get_mili_gold_price():
     result = {}
     res_mili = requests.get('https://milli.gold/api/v1/public/milli-price/external').json()
+    res_price_change = requests.get('https://milli.gold/api/v1/public/milli-price/widget/external').json()
     price = res_mili['price18']
+    
+    data = res_price_change['data']['prices']['DAILY']
+    last_element = data[-1]
+    last_value = int(last_element['value'])
+    change24 = (100 * ((price - last_value)/last_value))
+   
     result['buy_price'] = (price * 0.5) /1000 + price
     result['sell_price'] = -(price * 0.5)/1000 + price
+    result['change24h'] = change24
 
     return result
+
 
 
 def get_talase_price():
     result = {}
     res_talase = requests.get('https://api.talasea.ir/api/market/getGoldPrice?').json()
     price = res_talase['price']
+    change24h = res_talase['change24h']
 
     result['buy_price'] = (res_talase['feeTable'][0]['fee'] * price + price)
-    result['sell_price'] = (-(res_talase['feeTable'][0]['fee'] * price)  + price)
-
-
+    result['sell_price'] = (-(res_talase['feeTable'][0]['fee'] * price)  +  price)
+    result['change24h'] =  change24h
     return result
-
 
 
 
@@ -43,10 +56,20 @@ def get_tlyn_price():
 
     price_buy = p_element.text.replace('تومان', '').replace(",", "")
     price_sell = p_element_sell.text.replace('تومان', '').replace(",", "")
+
+
+
+    try:
+        TlynModel.objects.order_by(timestamp=)
+
+
     result['buy_price']= int(price_buy)/100
     result['sell_price'] = int(price_sell)/100
 
     return result
+
+
+
 
 
 @shared_task
@@ -56,5 +79,7 @@ def save_db():
     MilliGoldModel.objects.create(
             buy_price=prices_mili_gold['buy_price'],
             sell_price=prices_mili_gold['bidPrice'],
+            change24h=prices_mili_gold['change24h'],
     )
+
 
